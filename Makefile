@@ -22,4 +22,7 @@ timing.o: timing.cpp
 clean:
 	rm -f oracle timing oracle.o rsa.o timing.o
 
+tidy:
+	rm -f oracle.o rsa.o timing.o
+
 .PHONY: all clean

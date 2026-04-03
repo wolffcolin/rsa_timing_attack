@@ -1,5 +1,0 @@
-CXX = g++
-CXXFLAGS = -std=c++17 -O2 -Wall
-
-timing: timing.cpp
-	$(CXX) $(CXXFLAGS) -o timing timing.cpp

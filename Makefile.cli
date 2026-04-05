@@ -1,0 +1,6 @@
+CXX = g++
+CXXFLAGS = -std=c++17 -O2 -Wall
+LDFLAGS = -lgmp -lgmpxx
+
+cli: cli.cpp rsa.cpp rsa.h
+	$(CXX) $(CXXFLAGS) -o cli cli.cpp rsa.cpp $(LDFLAGS)

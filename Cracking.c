@@ -8,10 +8,10 @@
 #include <stdlib.h>
 //#include "eea.c"
 
-#define ITERATIONS 100
+#define ITERATIONS 10000
 #define NEIGHBORHOOD 1
 
-#define DEBUG
+//#define DEBUG
 
 
 
@@ -75,6 +75,7 @@ int main()
 	printf("R*R^(-1): ");
 	BN_print_fp(stdout, temp);
 	printf("\n");
+        BN_free(temp);
 
 	// Allocate space for input and output of decryption
 	int rsa_size = RSA_size(rsa);
@@ -162,10 +163,157 @@ int main()
 	printf("cycles: %d, %d, %d\n", cycles[0][0], cycles[0][50], cycles[0][ITERATIONS-1]);
 
 
+// *********************************************************************************************
+//      Second Guess
+//
+//
+	BN_rshift(guess, rsa->q, 256);
+	BN_lshift(guess, guess, 256);
+
+	printf("guess: ");
+	BN_print_fp(stdout, guess);
+	printf("\n");
+	for (unsigned long variations = 0; variations < 1; variations++) {
+		memset(ciphertext, 0, rsa_size);
+                BN_zero(guessneighbor);
+                BN_set_word(guessneighbor, variations);
+                BN_add(guessneighbor, guess, guessneighbor);
+                BN_mod_mul(cipherguess, guessneighbor, Rprime, rsa->n, ctx);
+
+                printf("guessneighbor: ");
+                BN_print_fp(stdout, guessneighbor);
+                printf("\n");
+
+		int bytes_written = BN_bn2bin(
+			cipherguess, ciphertext + (rsa_size - BN_num_bytes(cipherguess)));
+#ifdef DEBUG
+			printf("\n Ciphertext: ");
+			for (int i = 0; i < rsa_size; i++) {
+				printf("%02x", ciphertext[i]);
+			}
+			printf("\n");
+#endif
+
+		for (int i = 0; i < ITERATIONS; i++) {
+			// Timing code from https://blog.codingconfessions.com/p/rdtsc
+			unsigned int auxCPUID1, auxCPUID2;
+			unsigned long long start, end;
+			_mm_lfence();
+			start = __rdtscp(&auxCPUID1);
+			// Decrypt
+			// RSA_NO_PADDING as used in the paper
+			int result = RSA_private_decrypt(rsa_size, ciphertext,
+							 decrypted, rsa,
+							 RSA_NO_PADDING);
+			_mm_lfence();
+			end = __rdtscp(&auxCPUID2);
+
+#ifdef DEBUG
+			printf("\nPlaintext: ");
+			for (int i = 0; i < rsa_size; i++) {
+				printf("%02x ", decrypted[i]);
+			}
+			printf("\n");
+#endif
+
+			if (result == -1) {
+				ERR_print_errors_fp(stderr);
+			} else {
+				cycles[0][i] = (end - start);
+#ifdef DEBUG
+				printf("Decryption successful!\n");
+				printf("Cycles taken: %llu\n", (end - start));
+				printf("CPUIDs: %d, %d\n", auxCPUID1, auxCPUID2);
+#endif
+			}
+		}
+	}
+        qsort(cycles, ITERATIONS * NEIGHBORHOOD, sizeof(long long), compare_long_long);
+	printf("cycles: %d, %d, %d\n", cycles[0][0], cycles[0][50], cycles[0][ITERATIONS-1]);
+
+
+// *********************************************************************************************
+//      Third Guess
+//
+//
+	BN_rshift(guess, rsa->q, 256);
+	BN_lshift(guess, guess, 1);
+        BN_one(guessneighbor);
+        BN_add(guess, guess, guessneighbor);
+        BN_lshift(guess, guess, 255);
+
+
+	printf("guess: ");
+	BN_print_fp(stdout, guess);
+	printf("\n");
+	for (unsigned long variations = 0; variations < 1; variations++) {
+		memset(ciphertext, 0, rsa_size);
+                BN_zero(guessneighbor);
+                BN_set_word(guessneighbor, variations);
+                BN_add(guessneighbor, guess, guessneighbor);
+                BN_mod_mul(cipherguess, guessneighbor, Rprime, rsa->n, ctx);
+
+                printf("guessneighbor: ");
+                BN_print_fp(stdout, guessneighbor);
+                printf("\n");
+
+		int bytes_written = BN_bn2bin(
+			cipherguess, ciphertext + (rsa_size - BN_num_bytes(cipherguess)));
+#ifdef DEBUG
+			printf("\n Ciphertext: ");
+			for (int i = 0; i < rsa_size; i++) {
+				printf("%02x", ciphertext[i]);
+			}
+			printf("\n");
+#endif
+
+		for (int i = 0; i < ITERATIONS; i++) {
+			// Timing code from https://blog.codingconfessions.com/p/rdtsc
+			unsigned int auxCPUID1, auxCPUID2;
+			unsigned long long start, end;
+			_mm_lfence();
+			start = __rdtscp(&auxCPUID1);
+			// Decrypt
+			// RSA_NO_PADDING as used in the paper
+			int result = RSA_private_decrypt(rsa_size, ciphertext,
+							 decrypted, rsa,
+							 RSA_NO_PADDING);
+			_mm_lfence();
+			end = __rdtscp(&auxCPUID2);
+
+#ifdef DEBUG
+			printf("\nPlaintext: ");
+			for (int i = 0; i < rsa_size; i++) {
+				printf("%02x ", decrypted[i]);
+			}
+			printf("\n");
+#endif
+
+			if (result == -1) {
+				ERR_print_errors_fp(stderr);
+			} else {
+				cycles[0][i] = (end - start);
+#ifdef DEBUG
+				printf("Decryption successful!\n");
+				printf("Cycles taken: %llu\n", (end - start));
+				printf("CPUIDs: %d, %d\n", auxCPUID1, auxCPUID2);
+#endif
+			}
+		}
+	}
+        qsort(cycles, ITERATIONS * NEIGHBORHOOD, sizeof(long long), compare_long_long);
+	printf("cycles: %d, %d, %d\n", cycles[0][0], cycles[0][50], cycles[0][ITERATIONS-1]);
+	
 
 
 
 	// Clean up
+        BN_free(guess);
+        BN_free(guessneighbor);
+        BN_free(R);
+        BN_free(Rprime);
+        BN_free(cipherguess);
+
 	BN_MONT_CTX_free(mont);
 	BN_CTX_free(ctx);
 	RSA_free(rsa);

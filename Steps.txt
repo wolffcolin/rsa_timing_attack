@@ -1,0 +1,18 @@
+./Configure linux-x86_64 no-shared no-threads no-zlib -g -O3 -std=gnu89 -fcommon -Wno-error=incompatible-pointer-types no-asm
+edit ui_openssl.c lines 179 and 180 to define TERMIOS and undef TERMIO
+make
+make test
+
+UNDER NO CIRCUMSTANCES MAKE INSTALL
+
+
+./apps/openssl genrsa -out target_key.pem 1024
+openssl pkey -in target_key.pem -out private_key.pem
+openssl rsa -in target_key.pem -pubout -out public_key.pem
+
+
+
+
+
+
+https://cp-algorithms.com/algebra/extended-euclid-algorithm.html

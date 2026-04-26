@@ -87,6 +87,8 @@ int main()
 	printf("\n");
 
 	BIGNUM *guess = BN_new();
+        BIGNUM *guessneighbor = BN_new();
+        BIGNUM *cipherguess = BN_new();
 	BN_rshift(guess, rsa->q, 257);
 	BN_lshift(guess, guess, 257);
 
@@ -101,10 +103,19 @@ int main()
 //
 	long long cycles[NEIGHBORHOOD][ITERATIONS] = {0};
 	// Loop for timings
-	for (int variations = 0; variations < 1; variations++) {
-		memset(ciphertext, ITERATIONS, rsa_size);
+	for (unsigned long variations = 0; variations < 1; variations++) {
+		memset(ciphertext, 0, rsa_size);
+                BN_zero(guessneighbor);
+                BN_set_word(guessneighbor, variations);
+                BN_add(guessneighbor, guess, guessneighbor);
+                BN_mod_mul(cipherguess, guessneighbor, Rprime, rsa->n, ctx);
+
+                printf("guessneighbor: ");
+                BN_print_fp(stdout, guessneighbor);
+                printf("\n");
+
 		int bytes_written = BN_bn2bin(
-			guess, ciphertext + (rsa_size - BN_num_bytes(guess)));
+			cipherguess, ciphertext + (rsa_size - BN_num_bytes(cipherguess)));
 #ifdef DEBUG
 			printf("\n Ciphertext: ");
 			for (int i = 0; i < rsa_size; i++) {
@@ -113,7 +124,7 @@ int main()
 			printf("\n");
 #endif
 
-		for (int i = 0; i < 100; i++) {
+		for (int i = 0; i < ITERATIONS; i++) {
 			// Timing code from https://blog.codingconfessions.com/p/rdtsc
 			unsigned int auxCPUID1, auxCPUID2;
 			unsigned long long start, end;
@@ -142,7 +153,7 @@ int main()
 #ifdef DEBUG
 				printf("Decryption successful!\n");
 				printf("Cycles taken: %llu\n", (end - start));
-				printf("CPUIDs: %d, %d", auxCPUID1, auxCPUID2);
+				printf("CPUIDs: %d, %d\n", auxCPUID1, auxCPUID2);
 #endif
 			}
 		}

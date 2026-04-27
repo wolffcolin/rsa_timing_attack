@@ -13,6 +13,4 @@ openssl rsa -in target_key.pem -pubout -out public_key.pem
 
 
 
-
-
-https://cp-algorithms.com/algebra/extended-euclid-algorithm.html
+gcc -I./include Cracking.c ./libcrypto.a -o rsa_victim -ldl

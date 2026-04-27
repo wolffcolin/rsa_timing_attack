@@ -161,8 +161,8 @@ int main()
         BIGNUM *cipherguess = BN_new();
 
         // Instantiate guess with the top hundred or so bits of q
-	BN_rshift(guess, rsa->q, 381);
-	BN_lshift(guess, guess, 381);
+	BN_rshift(guess, rsa->q, 511);
+	BN_lshift(guess, guess, 511);
 
 
 
@@ -185,7 +185,7 @@ decryptTiming(rsa, R, Rprime, guess, guessneighbor, cipherguess, ctx, ciphertext
 unsigned long long g1 = ((unsigned long long *) cycles)[0];
 unsigned long long g2 = ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/2];
 unsigned long long g3 = ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-1];
-BN_set_bit(guess, 380);
+BN_set_bit(guess, 510);
         printf("\nq:             ");
 	BN_print_fp(stdout, rsa->q);
 	printf("\n");
@@ -197,7 +197,7 @@ decryptTiming(rsa, R, Rprime, guess, guessneighbor, cipherguess, ctx, ciphertext
 unsigned long long g4 = ((unsigned long long *) cycles)[0];
 unsigned long long g5 = ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/2];
 unsigned long long g6 = ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-1];
-BN_set_bit(guess, 379);
+BN_set_bit(guess, 509);
         printf("\nq:             ");
 	BN_print_fp(stdout, rsa->q);
 	printf("\n");

@@ -1,3 +1,6 @@
+#define _GNU_SOURCE
+
+
 #include <openssl/rsa.h>
 #include <openssl/pem.h>
 #include <openssl/err.h>
@@ -7,10 +10,14 @@
 #include <x86intrin.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <sched.h>
+#include <unistd.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 //#include "eea.c"
 
-#define ITERATIONS 10
-#define NEIGHBORHOOD 400
+#define ITERATIONS 128
+#define NEIGHBORHOOD 512
 
 //#define DEBUG
 
@@ -100,6 +107,25 @@ void decryptTiming(RSA *rsa, BIGNUM *R, BIGNUM *Rprime, BIGNUM *guess, BIGNUM *g
 
 int main()
 {
+	struct sched_param param;	
+        param.sched_priority = 90; // A very high real-time priority
+
+	if (sched_setscheduler(0, SCHED_FIFO, &param) == -1) 
+	{
+		printf("Failed to set scheduler\n");
+	}
+        if (setpriority(PRIO_PROCESS, 0, -20) == -1) {
+                printf("Failed to set process priority\n");
+        }
+        cpu_set_t  mask;
+        CPU_ZERO(&mask);
+        CPU_SET(3, &mask);
+        if (sched_setaffinity(0, sizeof(mask), &mask) == -1) {
+                printf("Failed to pin CPU\n");
+        }
+
+
+
 	RSA *rsa;
 	// Read the private key file
 	FILE *fp = fopen("private_key.pem", "r");

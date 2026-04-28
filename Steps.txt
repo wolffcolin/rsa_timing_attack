@@ -1,16 +1,18 @@
+// To Compile Openssl
 ./Configure linux-x86_64 no-shared no-threads no-zlib -g -O3 -std=gnu89 -fcommon -Wno-error=incompatible-pointer-types no-asm
-edit ui_openssl.c lines 179 and 180 to define TERMIOS and undef TERMIO
+// edit ui_openssl.c and move the #ifdef TERMIO above #ifdef TERMIOS. Change the body to #undef TERMIO #define TERMIOS
 make
 make test
 
-UNDER NO CIRCUMSTANCES MAKE INSTALL
+//UNDER NO CIRCUMSTANCES MAKE INSTALL
 
-
+// Create an RSA key
 ./apps/openssl genrsa -out target_key.pem 1024
 openssl pkey -in target_key.pem -out private_key.pem
 openssl rsa -in target_key.pem -pubout -out public_key.pem
 
-
-
-
+// Compile the code
 gcc -I./include Cracking.c ./libcrypto.a -o rsa_victim -ldl
+
+// Make sure to turn off variable cpu frequency
+sudo ./rsa_victim

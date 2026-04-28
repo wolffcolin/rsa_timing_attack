@@ -16,8 +16,8 @@
 #include <sys/resource.h>
 //#include "eea.c"
 
-#define ITERATIONS 10
-#define NEIGHBORHOOD 10
+#define ITERATIONS 32
+#define NEIGHBORHOOD 1024
 
 //#define DEBUG
 
@@ -137,6 +137,8 @@ int main()
 		perror("Unable to open private_key.pem");
 		return 1;
 	}
+
+        printf("(Settings) NEIGHBORHOOD: %d, ITERATIONS: %d\n", NEIGHBORHOOD, ITERATIONS);
 
 	// Load the private key and Instantiate rsa pointer
 	rsa = PEM_read_RSAPrivateKey(fp, NULL, NULL, NULL);

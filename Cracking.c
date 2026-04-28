@@ -16,8 +16,8 @@
 #include <sys/resource.h>
 //#include "eea.c"
 
-#define ITERATIONS 128
-#define NEIGHBORHOOD 512
+#define ITERATIONS 10
+#define NEIGHBORHOOD 10
 
 //#define DEBUG
 
@@ -98,8 +98,12 @@ void decryptTiming(RSA *rsa, BIGNUM *R, BIGNUM *Rprime, BIGNUM *guess, BIGNUM *g
 	}
         // Sort all results of variations and grab min, median, max, etc.
         qsort(cycles, ITERATIONS * NEIGHBORHOOD, sizeof(unsigned long long), compare_long_long);
-	printf("cycles min, 10th\%tile, median, max:\n");
-        printf("%llu, %llu, %llu, %llu\n", ((unsigned long long *) cycles)[0], ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/10], ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/2], ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-1]);
+
+     
+
+	//printf("cycles min, 10th\%tile, median, max:\n");
+
+        printf("%llu, %llu, %llu, %llu, ", ((unsigned long long *) cycles)[0], ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/10], ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/2], ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-1]);
 
 
 }
@@ -193,40 +197,68 @@ int main()
 	BN_rshift(guess, rsa->q, 381);
 	BN_lshift(guess, guess, 381);
 
+        printf("\nq: ");
+	BN_print_fp(stdout, rsa->q);
+	printf("\n");
+
 
 
 
         // For storing timings
        	unsigned long long cycles[NEIGHBORHOOD][ITERATIONS] = {0};
 
+
+        printf("min t, 10th t, median t, max t, mean t, variance t, min delta t (all), prev min t (all), 10th delta t (all), prev 10th t (all), median delta t (all), prev median t (all), max delta t (all), prev max t (all), mean delta t (all), prev mean t (all), ");
+        printf("prev min delta t, prev min t, prev 10th delta t, prev 10th t, prev median delta t, prev median t, prev max delta t, prev max t, prev mean delta t, prev mean t, Indicator (Big/Small), guess\n");
+
+
 // *********************************************************************************************
 //      This is the start of actual decryption
 //
 //
 
-unsigned long long lastTime[4] = {0};
-unsigned long long deltaTime[4];
-unsigned long long storedTimes[4][mont->ri];
+unsigned long long lastTime[5] = {0};
+unsigned long long deltaTime[5];
+unsigned long long storedTimes[5][mont->ri];
 int countStoredTimes = 0;
 
-for (int i = 0; i < mont->ri; i++) {
+for (int q_bits = 0; q_bits < mont->ri; q_bits++) {
         // Load guess directly from q (this is cheating but important for determining thresholds in prototype)
-        BN_rshift(guess, rsa->q, (mont->ri-i));
-        BN_lshift(guess, guess, (mont->ri-i));
+        BN_rshift(guess, rsa->q, (mont->ri-q_bits));
+        BN_lshift(guess, guess, (mont->ri-q_bits));
         // Set the next bit to 1
-        BN_set_bit(guess, mont->ri - 1 - i);
+        BN_set_bit(guess, mont->ri - 1 - q_bits);
 
-        printf("\nq:             ");
-	BN_print_fp(stdout, rsa->q);
-	printf("\n");
-
-	printf("guess:         ");
-	BN_print_fp(stdout, guess);
-	printf("\n");
 
         // Run guess
         decryptTiming(rsa, R, Rprime, guess, guessneighbor, cipherguess, ctx, ciphertext, decrypted, cycles);
 
+
+
+        unsigned long long mean = 0;
+        unsigned long long variance = 0;
+
+        // Calculate mean value
+        for (int i = 0; i < ITERATIONS*NEIGHBORHOOD; i++) {
+                mean += ((unsigned long long *) cycles)[i];
+        }
+        mean /= (ITERATIONS*NEIGHBORHOOD);
+
+        // Calculate variance
+        unsigned long long temp;
+        for (int i = 0; i < ITERATIONS*NEIGHBORHOOD; i++) {
+                if (mean > ((unsigned long long *) cycles)[i]) {
+                        temp = mean - ((unsigned long long *) cycles)[i];
+                } else {
+                        temp = ((unsigned long long *) cycles)[i] - mean;
+                }
+                if (variance > variance + temp * temp) {
+                        printf("Error!!!!!!!!!!!!! overflow");
+                }
+                variance += (temp * temp);
+        }
+        variance /= (ITERATIONS*NEIGHBORHOOD);   
+        printf("%llu, %llu, ", mean, variance);
 
 
 
@@ -235,10 +267,12 @@ for (int i = 0; i < mont->ri; i++) {
         deltaTime[1] = ULLONG_MAX;
         deltaTime[2] = ULLONG_MAX;
         deltaTime[3] = ULLONG_MAX;
+        deltaTime[4] = ULLONG_MAX;
         lastTime[0] = 0;
         lastTime[1] = 0;
         lastTime[2] = 0;
         lastTime[3] = 0;
+        lastTime[4] = 0;
         
 
         // Min Metrics
@@ -261,6 +295,8 @@ for (int i = 0; i < mont->ri; i++) {
         } else {
                 printf("-");
         }
+        printf("%llu, %llu, ", deltaTime[0], lastTime[0]);
+
 
 
 // 10th percentile metrics
@@ -283,6 +319,8 @@ for (int i = 0; i < mont->ri; i++) {
         } else {
                 printf("-");
         }
+        printf("%llu, %llu, ", deltaTime[1], lastTime[1]);
+
 
 // Median Metrics
         for (int j = 0; j < countStoredTimes; j++) {
@@ -304,87 +342,118 @@ for (int i = 0; i < mont->ri; i++) {
         } else {
                 printf("-");
         }
+        printf("%llu, %llu, ", deltaTime[2], lastTime[2]);
+
 
 // Max Metrics
         for (int j = 0; j < countStoredTimes; j++) {
-                if (storedTimes[3][j] > ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-2]) {
-                        if((storedTimes[3][j] - ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-2]) < deltaTime[3]) {
-                                deltaTime[3] = storedTimes[3][j] - ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-2];
+                if (storedTimes[3][j] > ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-1]) {
+                        if((storedTimes[3][j] - ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-1]) < deltaTime[3]) {
+                                deltaTime[3] = storedTimes[3][j] - ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-1];
                                 lastTime[3] = storedTimes[3][j];
                         }
                 } else {
-                        if((((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-2] - storedTimes[3][j]) < deltaTime[3]) {
-                                deltaTime[3] = ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-2] - storedTimes[3][j];
+                        if((((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-1] - storedTimes[3][j]) < deltaTime[3]) {
+                                deltaTime[3] = ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-1] - storedTimes[3][j];
                                 lastTime[3] = storedTimes[3][j];
                         }
                 }
         }
 
-        if (lastTime[3] > ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-2]) {
+        if (lastTime[3] > ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-1]) {
                 printf("+");
         } else {
                 printf("-");
         }
+        printf("%llu, %llu, ", deltaTime[3], lastTime[3]);
 
-// Print out metrics
 
-        printf("DELTA T (");
-        if (BN_cmp(guess, rsa->q) == 1) {
-                printf("Big):\n");
+// Mean Metrics
+        for (int j = 0; j < countStoredTimes; j++) {
+                if (storedTimes[4][j] > mean) {
+                        if((storedTimes[4][j] - mean) < deltaTime[4]) {
+                                deltaTime[4] = storedTimes[4][j] - mean;
+                                lastTime[4] = storedTimes[4][j];
+                        }
+                } else {
+                        if((mean - storedTimes[4][j]) < deltaTime[4]) {
+                                deltaTime[4] = mean - storedTimes[4][j];
+                                lastTime[4] = storedTimes[4][j];
+                        }
+                }
+        }
+
+        if (lastTime[4] > mean) {
+                printf("+");
         } else {
-                printf("Small):\n");
-                storedTimes[0][countStoredTimes] = ((unsigned long long *) cycles)[0];
-                storedTimes[1][countStoredTimes] = ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/10];
-                storedTimes[2][countStoredTimes] = ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/2];
-                storedTimes[3][countStoredTimes] = ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-1];
-        }     
-        printf("%llu from prevTimes %llu\n", deltaTime[0], lastTime[0]);
-        printf("%llu from prevTimes %llu\n", deltaTime[1], lastTime[1]);
-        printf("%llu from prevTimes %llu\n", deltaTime[2], lastTime[2]);
-        printf("%llu from prevTimes %llu\n", deltaTime[3], lastTime[3]);
-
-
-
-
+                printf("-");
+        }
+        printf("%llu, %llu, ", deltaTime[4], lastTime[4]);
+        
+        
+        
         if (countStoredTimes > 0) {
-                printf("Sequentials:\n");
+                //printf("Sequentials, ");
                 if (storedTimes[0][countStoredTimes - 1] > ((unsigned long long *) cycles)[0]) {
                         printf("+");
-                        printf("%llu from prevTimes %llu\n", storedTimes[0][countStoredTimes - 1] - ((unsigned long long *) cycles)[0], storedTimes[0][countStoredTimes - 1]);
+                        printf("%llu, %llu, ", storedTimes[0][countStoredTimes - 1] - ((unsigned long long *) cycles)[0], storedTimes[0][countStoredTimes - 1]);
                 } else {
                         printf("-");
-                        printf("%llu from prevTimes %llu\n", ((unsigned long long *) cycles)[0] - storedTimes[0][countStoredTimes - 1], storedTimes[0][countStoredTimes - 1]);
+                        printf("%llu, %llu, ", ((unsigned long long *) cycles)[0] - storedTimes[0][countStoredTimes - 1], storedTimes[0][countStoredTimes - 1]);
                 }   
                   
                 if (storedTimes[1][countStoredTimes - 1] > ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/10]) {
                         printf("+");
-                        printf("%llu from prevTimes %llu\n", storedTimes[1][countStoredTimes - 1] - ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/10], storedTimes[1][countStoredTimes - 1]);
+                        printf("%llu, %llu, ", storedTimes[1][countStoredTimes - 1] - ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/10], storedTimes[1][countStoredTimes - 1]);
                 } else {
                         printf("-");
-                        printf("%llu from prevTimes %llu\n", ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/10] - storedTimes[1][countStoredTimes - 1], storedTimes[1][countStoredTimes - 1]);
+                        printf("%llu, %llu, ", ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/10] - storedTimes[1][countStoredTimes - 1], storedTimes[1][countStoredTimes - 1]);
                 }
                   
                 if (storedTimes[2][countStoredTimes - 1] > ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/2]) {
                         printf("+");
-                        printf("%llu from prevTimes %llu\n", storedTimes[2][countStoredTimes - 1] - ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/2], storedTimes[2][countStoredTimes - 1]);
+                        printf("%llu, %llu, ", storedTimes[2][countStoredTimes - 1] - ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/2], storedTimes[2][countStoredTimes - 1]);
                 } else {
                         printf("-");
-                        printf("%llu from prevTimes %llu\n", ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/2] - storedTimes[2][countStoredTimes - 1], storedTimes[2][countStoredTimes - 1]);
+                        printf("%llu, %llu, ", ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/2] - storedTimes[2][countStoredTimes - 1], storedTimes[2][countStoredTimes - 1]);
                 }
                   
                 if (storedTimes[3][countStoredTimes - 1] > ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-1]) {
                         printf("+");
-                        printf("%llu from prevTimes %llu\n", storedTimes[3][countStoredTimes - 1] - ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-1], storedTimes[3][countStoredTimes - 1]);
+                        printf("%llu, %llu, ", storedTimes[3][countStoredTimes - 1] - ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-1], storedTimes[3][countStoredTimes - 1]);
                 } else {
                         printf("-");
-                        printf("%llu from prevTimes %llu\n", ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-1] - storedTimes[3][countStoredTimes - 1], storedTimes[3][countStoredTimes - 1]);
+                        printf("%llu, %llu, ", ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-1] - storedTimes[3][countStoredTimes - 1], storedTimes[3][countStoredTimes - 1]);
+                }
+
+                if (storedTimes[4][countStoredTimes - 1] > mean) {
+                        printf("+");
+                        printf("%llu, %llu, ", storedTimes[4][countStoredTimes - 1] - mean, storedTimes[4][countStoredTimes - 1]);
+                } else {
+                        printf("-");
+                        printf("%llu, %llu, ", mean - storedTimes[4][countStoredTimes - 1], storedTimes[4][countStoredTimes - 1]);
                 }
         }
 
-        if (BN_cmp(guess, rsa->q) != 1) {
-                countStoredTimes += 1;
-        }  
 
+        // Update data if small and print out big/small
+        if (BN_cmp(guess, rsa->q) == 1) {
+                printf("Big, ");
+        } else {
+                printf("Small, ");
+                storedTimes[0][countStoredTimes] = ((unsigned long long *) cycles)[0];
+                storedTimes[1][countStoredTimes] = ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/10];
+                storedTimes[2][countStoredTimes] = ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD/2];
+                storedTimes[3][countStoredTimes] = ((unsigned long long *) cycles)[ITERATIONS*NEIGHBORHOOD-1];
+                storedTimes[4][countStoredTimes] = mean;
+                countStoredTimes += 1;
+
+        }   
+        
+        
+	BN_print_fp(stdout, guess);
+        printf(",\n");
+	printf("\n");
         
 }
 

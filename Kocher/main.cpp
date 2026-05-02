@@ -1,7 +1,7 @@
-#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <vector>
+#include <x86intrin.h>
 
 #include "./util.h"
 #include "../rsa.h"
@@ -11,12 +11,11 @@
 
 #define PUB_KEY "./pub.key"
 #define PRI_KEY "./pri.key"
-#define N_SIZE 512
 
 struct Sample {
     mpz_class c;
-    double elapsed;
-    unsigned simCost;
+    unsigned long long cycles;
+    // unsigned simCost;
 };
 
 int main() {
@@ -29,29 +28,38 @@ int main() {
     gmp_randseed_ui(randState, time(nullptr));
 
     std::vector<Sample> samples(SAMPLE_SIZE);
-    for (unsigned i = 0; i < SAMPLE_SIZE; i++) {
+    unsigned warmUp = SAMPLE_SIZE / 100;
+    for (unsigned i = 0; i < SAMPLE_SIZE + warmUp; i++) {
         Sample sample;
 
         // generate random ciphertext
         mpz_class c;
         mpz_urandomm(c.get_mpz_t(), randState, pubKey.n.get_mpz_t());
         sample.c = c;
-        
-        auto startTime = std::chrono::steady_clock::now();
-        square_and_multiply(c, priKey.d, pubKey.n, sample.simCost);
-        auto endTime = std::chrono::steady_clock::now();
-        std::chrono::duration<double> elapsed = endTime - startTime;
-        sample.elapsed = elapsed.count();
 
-        samples.at(i) = sample;
+        unsigned int aux;
+        unsigned long long start = __rdtscp(&aux);
+        _mm_lfence();
+
+        // square_and_multiply(c, priKey.d, pubKey.n, sample.simCost);
+        rsa.decrypt(c, priKey);
+
+        _mm_lfence();
+        unsigned long long end = __rdtscp(&aux);
+        sample.cycles = end - start;
+
+        if (i >= warmUp) samples.at(i - warmUp) = sample;
     }
 
     // output to csv
     std::ofstream file(CSV_PATH);
-    file << "elapsed,simCost" << std::endl;
+    // file << "cycles,simCost" << std::endl;
+    file << "cycles" << std::endl;
     for (unsigned i = 0; i < SAMPLE_SIZE; i++) {
         Sample sample = samples.at(i);
-        file << sample.elapsed << "," << sample.simCost << "," << std::endl;
+        file << sample.cycles << ",";
+        // file << sample.simCost << ",";
+        file << std::endl;
     }
     file.close();
 

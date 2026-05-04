@@ -1,10 +1,13 @@
 #ifndef UTIL_HPP
 #define UTIL_HPP
 
+#include <vector>
 #include <gmpxx.h>
 
-mpz_class square_and_multiply(mpz_class y, mpz_class x, mpz_class n, unsigned& cost);
+mpz_class square_and_multiply(mpz_class base, mpz_class exp, mpz_class mod, unsigned rounds);
 
-mpz_class mult_mod(mpz_class a, mpz_class b, mpz_class n, unsigned& cost);
+unsigned long long median(std::vector<unsigned long long>& vec);
+
+double variance(std::vector<long long>& vec);
 
 #endif // UTIL_HPP

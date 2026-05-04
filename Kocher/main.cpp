@@ -77,7 +77,7 @@ int main() {
             for (unsigned j = 0; j < NUM_RUNS; j++) {
                 start = __rdtscp(&aux);
                 _mm_lfence();
-                square_and_multiply(c, h0Key, pubKey.n, bit);
+                square_and_multiply(c, h0Key, pubKey.n, bit + 1);
                 _mm_lfence();
                 end = __rdtscp(&aux);
                 h0Preds.at(j) = end - start;
@@ -88,7 +88,7 @@ int main() {
             for (unsigned j = 0; j < NUM_RUNS; j++) {
                 start = __rdtscp(&aux);
                 _mm_lfence();
-                square_and_multiply(c, h1Key, pubKey.n, bit);
+                square_and_multiply(c, h1Key, pubKey.n, bit + 1);
                 _mm_lfence();
                 end = __rdtscp(&aux);
                 h1Preds.at(j) = end - start;

@@ -5,14 +5,13 @@
 #include "./util.h"
 #include "../rsa.h"
 
-#define SAMPLE_SIZE 10000
+#define SAMPLE_SIZE 3000
 #define NUM_RUNS 10
 #define CSV_PATH "./samples.csv"
 
 #define PUB_KEY "./pub.key"
 #define PRI_KEY "./pri.key"
 #define KEY_LEN 512
-#define PREDICT_LEN 16
 
 struct Sample {
     mpz_class c;
@@ -59,7 +58,7 @@ int main() {
     // measure hypotheses and predict bit-by-bit
     mpz_class recoveredKey = 1; // assume first key bit is 1
     mpz_ptr dPtr = priKey.d.get_mpz_t();
-    for (unsigned bit = 1; bit < PREDICT_LEN; bit++) {
+    for (unsigned bit = 1; bit < KEY_LEN; bit++) {
         // set hypothesis keys
         mpz_class baseHKey = 0;
         mpz_setbit(baseHKey.get_mpz_t(), (KEY_LEN - 1)); // long key with MSB = 1

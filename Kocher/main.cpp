@@ -1,11 +1,12 @@
 #include <fstream>
 #include <iostream>
+#include <sys/resource.h>
 #include <x86intrin.h>
 
 #include "./util.h"
 #include "../rsa.h"
 
-#define SAMPLE_SIZE 3000
+#define SAMPLE_SIZE 5000
 #define NUM_RUNS 10
 #define CSV_PATH "./samples.csv"
 
@@ -16,9 +17,25 @@
 struct Sample {
     mpz_class c;
     unsigned long long cycles;
+    mpz_class costModel;
 };
 
 int main() {
+    struct sched_param param;	
+    param.sched_priority = 90; // high real-time priority
+	if (sched_setscheduler(0, SCHED_FIFO, &param) == -1) {
+		std::cerr << "Failed to set scheduler" << std::endl;
+	}
+    if (setpriority(PRIO_PROCESS, 0, -20) == -1) {
+        std::cerr << "Failed to set process priority" << std::endl;
+    }
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    CPU_SET(3, &mask);
+    if (sched_setaffinity(0, sizeof(mask), &mask) == -1) {
+        std::cerr << "Failed to pin CPU" << std::endl;
+    }
+
     RSA rsa;
     PublicKey pubKey = rsa.load_public_key(PUB_KEY);
     PrivateKey priKey = rsa.load_private_key(PRI_KEY);
@@ -43,11 +60,11 @@ int main() {
 
         std::vector<unsigned long long> measurements(NUM_RUNS);
         for (unsigned j = 0; j < NUM_RUNS; j++) {
+            _mm_lfence();
             start = __rdtscp(&aux);
-            _mm_lfence();
-            square_and_multiply(c, priKey.d, pubKey.n, KEY_LEN);
-            _mm_lfence();
+            square_and_multiply(c, priKey.d, pubKey.n, KEY_LEN, sample.costModel);
             end = __rdtscp(&aux);
+            _mm_lfence();
             measurements.at(j) = end - start;
         }
         sample.cycles = median(measurements);
@@ -69,46 +86,52 @@ int main() {
 
         std::vector<long long> h0Errors(SAMPLE_SIZE);
         std::vector<long long> h1Errors(SAMPLE_SIZE);
+        // std::vector<mpz_class> h0CostErrors(SAMPLE_SIZE);
+        // std::vector<mpz_class> h1CostErrors(SAMPLE_SIZE);
         for (unsigned i = 0; i < SAMPLE_SIZE; i++) {
             Sample& sample = samples.at(i);
             mpz_class c = sample.c;
 
             std::vector<unsigned long long> h0Preds(NUM_RUNS);
+            mpz_class h0CostModel;
             for (unsigned j = 0; j < NUM_RUNS; j++) {
+                _mm_lfence();
                 start = __rdtscp(&aux);
-                _mm_lfence();
-                square_and_multiply(c, h0Key, pubKey.n, bit + 1);
-                _mm_lfence();
+                square_and_multiply(c, h0Key, pubKey.n, bit + 1, h0CostModel);
                 end = __rdtscp(&aux);
+                _mm_lfence();
                 h0Preds.at(j) = end - start;
             }
             unsigned long long h0Med = median(h0Preds);
             
             std::vector<unsigned long long> h1Preds(NUM_RUNS);
+            mpz_class h1CostModel;
             for (unsigned j = 0; j < NUM_RUNS; j++) {
+                _mm_lfence();
                 start = __rdtscp(&aux);
-                _mm_lfence();
-                square_and_multiply(c, h1Key, pubKey.n, bit + 1);
-                _mm_lfence();
+                square_and_multiply(c, h1Key, pubKey.n, bit + 1, h1CostModel);
                 end = __rdtscp(&aux);
+                _mm_lfence();
                 h1Preds.at(j) = end - start;
             }
             unsigned long long h1Med = median(h1Preds);
 
             h0Errors.at(i) = sample.cycles - h0Med;
             h1Errors.at(i) = sample.cycles - h1Med;
+            // h0CostErrors.at(i) = sample.costModel - h0CostModel;
+            // h1CostErrors.at(i) = sample.costModel - h1CostModel;
         }
 
         // calculate variance and predict bit
         double h0Var = variance(h0Errors);
         double h1Var = variance(h1Errors);
+        // mpq_class h0CostVar = variance(h0CostErrors);
+        // mpq_class h1CostVar = variance(h1CostErrors);
         std::cout << "[Bit " << bit << "] Var(h0)=" << h0Var << ", Var(h1)=" << h1Var << std::endl; 
         unsigned setBit = h0Var < h1Var;
         unsigned actualBit = mpz_tstbit(dPtr, bit);
         unsigned success = setBit == actualBit;
-        if (setBit && success) {
-            mpz_setbit(recoveredKey.get_mpz_t(), bit);
-        }
+        if (setBit) mpz_setbit(recoveredKey.get_mpz_t(), bit);
         std::cout << "[Bit " << bit << "] " << (success ? "SUCCESS" : "FAIL") << " Predicted=" << setBit << ", Actual=" << actualBit << std::endl;
         if (!success) break;
     }
@@ -118,10 +141,11 @@ int main() {
 
     // output to csv
     std::ofstream file(CSV_PATH);
-    file << "cycles" << std::endl;
+    file << "cycles,costModel" << std::endl;
     for (unsigned i = 0; i < SAMPLE_SIZE; i++) {
-        Sample sample = samples.at(i);
+        Sample& sample = samples.at(i);
         file << sample.cycles << ",";
+        file << sample.costModel << ",";
         file << std::endl;
     }
     file.close();

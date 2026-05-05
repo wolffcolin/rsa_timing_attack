@@ -128,7 +128,7 @@ int main() {
         // mpq_class h0CostVar = variance(h0CostErrors);
         // mpq_class h1CostVar = variance(h1CostErrors);
         std::cout << "[Bit " << bit << "] Var(h0)=" << h0Var << ", Var(h1)=" << h1Var << std::endl; 
-        unsigned setBit = h0Var < h1Var;
+        unsigned setBit = h1Var < h0Var;
         unsigned actualBit = mpz_tstbit(dPtr, bit);
         unsigned success = setBit == actualBit;
         if (setBit) mpz_setbit(recoveredKey.get_mpz_t(), bit);

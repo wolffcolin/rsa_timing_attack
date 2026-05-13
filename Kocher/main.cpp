@@ -8,7 +8,9 @@
 
 #define SAMPLE_SIZE 5000
 #define NUM_RUNS 10
-#define CSV_PATH "./samples.csv"
+#define DEBUG true
+#define SAMPLES_CSV_PATH "./samples.csv"
+#define VARIANCE_CSV_PATH "./variance.csv"
 
 #define PUB_KEY "./pub.key"
 #define PRI_KEY "./pri.key"
@@ -46,6 +48,7 @@ int main() {
 
     // collect timing measurements
     std::vector<Sample> samples(SAMPLE_SIZE);
+    std::vector<long long> sampleCycles(SAMPLE_SIZE);
     unsigned warmUp = SAMPLE_SIZE / 100;
     unsigned int aux;
     unsigned long long start;
@@ -65,16 +68,24 @@ int main() {
             square_and_multiply(c, priKey.d, pubKey.n, KEY_LEN, sample.costModel);
             end = __rdtscp(&aux);
             _mm_lfence();
-            measurements.at(j) = end - start;
+            sample.cycles = end - start;
         }
-        sample.cycles = median(measurements);
 
-        if (i >= warmUp) samples.at(i - warmUp) = sample;
+        if (i >= warmUp) {
+            samples.at(i - warmUp) = sample;
+            sampleCycles.at(i - warmUp) = sample.cycles;
+        }
+    }
+    if (DEBUG) {
+        double messageVariance = variance(sampleCycles);
+        std::cout << "[Raw] Var=" << messageVariance << std::endl;
     }
 
     // measure hypotheses and predict bit-by-bit
     mpz_class recoveredKey = 1; // assume first key bit is 1
     mpz_ptr dPtr = priKey.d.get_mpz_t();
+    std::vector<double> h0Vars;
+    std::vector<double> h1Vars;
     for (unsigned bit = 1; bit < KEY_LEN; bit++) {
         // set hypothesis keys
         mpz_class baseHKey = 0;
@@ -125,13 +136,16 @@ int main() {
         // calculate variance and predict bit
         double h0Var = variance(h0Errors);
         double h1Var = variance(h1Errors);
+        h0Vars.push_back(h0Var);
+        h1Vars.push_back(h1Var);
         // mpq_class h0CostVar = variance(h0CostErrors);
         // mpq_class h1CostVar = variance(h1CostErrors);
-        std::cout << "[Bit " << bit << "] Var(h0)=" << h0Var << ", Var(h1)=" << h1Var << std::endl; 
+        if (DEBUG) std::cout << "[Bit " << bit << "] Var(h0)=" << h0Var << ", Var(h1)=" << h1Var << std::endl; 
         unsigned setBit = h1Var < h0Var;
         unsigned actualBit = mpz_tstbit(dPtr, bit);
         unsigned success = setBit == actualBit;
         if (setBit) mpz_setbit(recoveredKey.get_mpz_t(), bit);
+        // if (actualBit) mpz_setbit(recoveredKey.get_mpz_t(), bit); // TEST
         std::cout << "[Bit " << bit << "] " << (success ? "SUCCESS" : "FAIL") << " Predicted=" << setBit << ", Actual=" << actualBit << std::endl;
         if (!success) break;
     }
@@ -140,15 +154,25 @@ int main() {
     std::cout << "Recovered key: " << recoveredKey.get_str(16) << std::endl;
 
     // output to csv
-    std::ofstream file(CSV_PATH);
-    file << "cycles,costModel" << std::endl;
+    std::ofstream samplesFile(SAMPLES_CSV_PATH);
+    samplesFile << "cycles,costModel" << std::endl;
     for (unsigned i = 0; i < SAMPLE_SIZE; i++) {
         Sample& sample = samples.at(i);
-        file << sample.cycles << ",";
-        file << sample.costModel << ",";
-        file << std::endl;
+        samplesFile << sample.cycles << ",";
+        samplesFile << sample.costModel << ",";
+        samplesFile << std::endl;
     }
-    file.close();
+    samplesFile.close();
+
+    std::ofstream varianceFile(VARIANCE_CSV_PATH);
+    varianceFile << "bit,h0Var,h1Var" << std::endl;
+    for (unsigned i = 0; i < h0Vars.size(); i++) {
+        varianceFile << i << ",";
+        varianceFile << h0Vars.at(i) << ",";
+        varianceFile << h1Vars.at(i) << ",";
+        varianceFile << std::endl;
+    }
+    varianceFile.close();
 
     return 0;
 }

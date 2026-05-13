@@ -1,0 +1,29 @@
+This project implements an RSA oracle that is vulnerable to side channel attacks like timing attacks, and implements a basic timing utility
+that takes a directory of ciphertexts to gather decryptions times from.
+
+------code files--------
+
+keygen.cpp: generates secure, random public and private keyfiles that work with the oracle.
+
+rsa.cpp: loads public or private keys from a keyfile and performs the encryptions / decryption operations. I simply used GMP's mpz_powm function (which is
+based on square and multiply but optimized) to compute exponentiation for encryption, but I implemented square and multiply directly for decryption since I think mpz_powm optimizations could muddy timing results.
+
+oracle.cpp: creates a decryption oracle server that runs over unix sockets. Idea is to avoid having overhead from starting the process over and over again,
+this allows timing to be closer to just the square and multiply computation.
+    - potential issue: currently reading in byte at a time, not efficient at all and I think we can stick to some constant size for inputs and make this better by reading all at once
+
+cli.cpp: exposes encrypt and decrypt functions from rsa.cpp, useful for generating a bunch of test ciphertext
+
+timing.cpp: takes a directory of ciphertexts to test with, runs them through the oracle (currently) 1000 times and gathers timing results for each iteration.
+I think we may benefit from having a higher number of sample ciphertexts (~2000) and stick with 1000 iterations per sample. Puts results in csv file.
+
+-----Testing the oracle with socat------
+
+socat - UNIX-CONNECT:/tmp/rsa_oracle.sock
+
+--------Running oracle----------------
+
+I have been running this with core affinity to help with noise reduction:
+taskset -c 0 ./oracle private.key
+taskset -c 1 ./timing some-directory-of-ciphertext-samples
+
